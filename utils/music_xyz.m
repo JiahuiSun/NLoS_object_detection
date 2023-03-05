@@ -9,7 +9,7 @@ lambda = params.lambda;
 
 num_detected_obj=size(detout,2);
 
-virtual_ant=zeros(Ne,num_detected_obj);
+virtual_ant=zeros(Ne,num_detected_obj); % 把每个接收天线存在物体的bin给取出来
 for i=1:num_detected_obj
     virtual_ant(:,i)=Xcube(detout(2,i),:,detout(1,i));
 end
@@ -18,11 +18,11 @@ angles=zeros(2,num_detected_obj); % each col: [azimuth, elevation]
 
 % azimuth: -60~60, step: 1
 azim_num=(azim_end-azim_start)/azim_step+1;
-L = n_target;
+L = n_target; % 这是啥有意思？为什么赋值1？信源存在2个，为什么不是2？2发4收，可是4个接收天线也不是一字排开的呀
 a_azim = zeros(azim_num,2 * num_rx-L+1);
 for al=0:1:(azim_num-1)
     for s_i = 1:1:(2 * num_rx-L+1)
-        a_azim(al+1, s_i) = exp(1i*2*pi*fc*(s_i-1)*lambda/2*sin((azim_start+al*azim_step)/180*pi)/c);
+        a_azim(al+1, s_i) = exp(1i*2*pi*fc*(s_i-1)*lambda/2*sin((azim_start+al*azim_step)/180*pi)/c); % 这里是e^j，而不是e^-j，有影响吗？
     end
 end
 % elevation: -15~15, step: 1
@@ -38,7 +38,7 @@ end
 azimuth_ant = virtual_ant(1:2 * num_rx, :);
 for i=1:num_detected_obj
     x=azimuth_ant(:,i);
-    Rxx=x*x';
+    Rxx=x*x'; % 这里没有取平均吧？这样估计也太不准确了，多帧取平均，是不是会好些？现在是把每帧的点云图叠加
     e = eig(Rxx);
     [V, D] = eig(Rxx);
     Q = V(:,1:(size(Rxx,1)-n_target));
@@ -59,7 +59,7 @@ for i=1:num_detected_obj
 end
 
 
-elevation_ant = virtual_ant([9,3], :);
+elevation_ant = virtual_ant([9,3], :); % 这里为啥只能用2个天线？为啥是9和3？
 
 for i=1:num_detected_obj
     x=elevation_ant(:,i);
