@@ -45,7 +45,7 @@ data_path = "/home/agent/下载/";
 radar_pos_key = "1-1";
 person_pos_key = "1_1";
 radar_angle = 30;
-corner_type = "L2";
+corner_type = 4;
 
 switch person_pos_key
     case "1_0"
@@ -82,38 +82,33 @@ switch radar_pos_key
 end
 
 switch corner_type
-    case "L1"
-        top_wall_y = 5.32;
-        bottom_wall_y = 3.18;
-        right_wall_x = 0;
-        left_wall_x = -1.8;
-        corner_pos = [left_wall_x, bottom_wall_y];
-        % 找出LoS的边界线，用于过滤点云
-        fov_line_w = [corner_pos(2)-radar_pos(2); radar_pos(1)-corner_pos(1)];
-        fov_line_b = radar_pos(2)*corner_pos(1)-radar_pos(1)*corner_pos(2);
-    case "L2"
+    case 1
+        % TODO: 这个还是不对吧，你分这么多type的目的是什么？是遍历所有情况吗？可是现在遍历全了吗？L转个角度，L开放型转个角度，你不就还得算。我觉得不能这样归类。
+    case 2
+
+    case 3
         top_wall_y = 5.32;
         bottom_wall_y = 3.18;
         left_wall_x = -1.8;
-        corner_pos = [left_wall_x, bottom_wall_y];
-        fov_line_k = (bottom_wall_y - radar_pos(2)) / (left_wall_x - radar_pos(1));
-        fov_line_z = corner_pos(2) - fov_line_k * corner_pos(1);
-        % 找出LoS的边界线，用于过滤点云
-        fov_line_w = [corner_pos(2)-radar_pos(2); radar_pos(1)-corner_pos(1)];
-        fov_line_b = radar_pos(2)*corner_pos(1)-radar_pos(1)*corner_pos(2);
-    case "T"
-        top_wall_y = 5.32;
-        bottom_wall_y = 3.18;
-        right_wall_x = 0;
-        left_wall_x = 0;
-        left_corner_pos = [right_wall_x, bottom_wall_y];
-        right_corner_pos = [left_wall_x, bottom_wall_y];
-        % 找出LoS的边界线，用于过滤点云
-        fov_line_w1 = [left_corner_pos(2)-radar_pos(2); radar_pos(1)-left_corner_pos(1)];
-        fov_line_b1 = radar_pos(2)*left_corner_pos(1)-radar_pos(1)*left_corner_pos(2);
-        % 找出LoS的边界线，用于过滤点云
-        fov_line_w2 = [right_corner_pos(2)-radar_pos(2); radar_pos(1)-right_corner_pos(1)];
-        fov_line_b2 = radar_pos(2)*right_corner_pos(1)-radar_pos(1)*right_corner_pos(2);
+        corner_args = struct('top_wall_y', 5.32, 'bottom_wall_y', 3.18, 'left_wall_x', -1.8);
+    case 4
+        corner_args = struct('top_wall_y', 5.32, 'bottom_wall_y', 3.18, 'left_wall_x', -1.8);
+    case 5
+
+    case 6
+
+    case 7 
+
+    case 8
+
+    case 9
+
+    case 10
+
+    case 11
+
+    case 12
+    
     otherwise
         error("Such a corner type is not considered.");
 end
@@ -209,7 +204,8 @@ for cnt = 1:30
 
     %% 将雷达坐标系下的点云转换到世界坐标系下
     world_xy = transform([x_vec, y_vec], radar_pos(1), radar_pos(2), 360-radar_angle);
-    all_frame_original_data = [all_frame_original_data; [world_xy, Resel_vel]];
+    world_xyv = [world_xy, Resel_vel];
+    all_frame_original_data = [all_frame_original_data; world_xyv];
 
     % 画原始点云图
     nexttile;
@@ -227,32 +223,12 @@ for cnt = 1:30
     plot(radar_pos(1), radar_pos(2), 'dc', "MarkerSize", 10);
     axis([-20 5 0 20]);
     hold off;
-    %% 粗筛，不同类型的转角过滤条件不同
-    if corner_type == "L1"
-        flag1 = world_xy(:, 2) <= top_wall_y;
-        flag2 = world_xy(:, 1) <= right_wall_x;
-        outside_wall_flag = bitand(flag1, flag2);
-    elseif corner_type == "L2"
-        outside_wall_flag = world_xy(:, 2) <= top_wall_y;
-    elseif corner_type == "T"
-        % 过滤位于LoS的点，FOV的边界，并且y要小于墙
-        flag1 = world_xy * fov_line_w1 + ones([size(world_xy, 1), 1]) * fov_line_b1;
-        flag1 = flag1 >= 0;
-        flag2 = world_xy * fov_line_w2 + ones([size(world_xy, 1), 1]) * fov_line_b2;
-        flag2 = flag2 <= 0;
-        flag3 = world_xy(:, 2) <= top_wall_y;
-        outside_wall_flag = ~bitand(bitand(flag1, flag2), flag3);
-    else
-        error("Such a corner type is not considered.");
-    end
-    % 把墙内太远的点去掉
-    inside_wall_flag = world_xy(:, 2) > top_wall_y + top_wall_y - bottom_wall_y;
-    coarse_flag = ~bitor(outside_wall_flag, inside_wall_flag);
-    world_xy_filter = world_xy(coarse_flag, :);
-    Resel_vel_filter = Resel_vel(coarse_flag);
+
+    %% 过滤并映射
+    world_xyv_nlos = NLoS_point_filter_map(world_xyv, radar_pos, corner_type, corner_args);
 
     % 如果没有剩下的点了，就没必要映射了
-    if size(world_xy_filter, 1) < 1
+    if size(world_xyv_nlos, 1) < 1
         fprintf("no point left.\n");
         % 画一张空白图
         nexttile;
@@ -269,60 +245,12 @@ for cnt = 1:30
         axis([-20 5 0 20]);
         hold off;
     else
-        %% 映射
-        if corner_type == "L1"
-            right_flag = world_xy_filter(:, 1) > right_wall_x;
-            if size(right_flag, 1) > 0
-                world_xy_filter(right_flag, 1) = 2*right_wall_x - world_xy_filter(right_flag, 1);
-            end
-            top_flag = world_xy_filter(:, 2) > top_wall_y;
-            if size(top_flag, 1) > 0
-                world_xy_filter(top_flag, 2) = 2*top_wall_y - world_xy_filter(top_flag, 2);
-            end
-            %% 映射后再筛
-            flag1 = (world_xy_filter * fov_line_w + ones([size(world_xy_filter, 1), 1]) * fov_line_b) < 0;
-            flag2 = bitand(world_xy_filter(:, 2) < top_wall_y, world_xy_filter(:, 2) > bottom_wall_y);
-            fine_flag = bitand(flag1, flag2);
-            world_xy_map = world_xy_filter(fine_flag, :);
-            Resel_vel_map = Resel_vel_filter(fine_flag, :);
-        elseif corner_type == "L2"
-            world_xy_filter(:, 2) = 2*top_wall_y - world_xy_filter(:, 2);
-            %% 映射后再筛
-            flag1 = (world_xy_filter * fov_line_w + ones([size(world_xy_filter, 1), 1]) * fov_line_b) < 0;
-            flag2 = bitand(world_xy_filter(:, 2) < top_wall_y, world_xy_filter(:, 2) > bottom_wall_y);
-            fine_flag = bitand(flag1, flag2);
-            world_xy_map = world_xy_filter(fine_flag, :);
-            Resel_vel_map = Resel_vel_filter(fine_flag, :);
-        elseif corner_type == "T"
-            % 如果y超过墙，通过前面的墙映射
-            front_flag = world_xy_filter(:, 2) > top_wall_y;
-            if size(front_flag, 1) > 0
-                world_xy_filter(front_flag, 2) = 2*top_wall_y - world_xy_filter(front_flag, 2);
-            end
-            % 如果x在FOV左边，通过右墙映射
-            left_flag = (world_xy_filter * fov_line_w1 + ones([size(world_xy_filter, 1), 1]) * fov_line_b1) < 0;
-            if size(left_flag, 1) > 0
-                world_xy_filter(left_flag, 1) = 2 * right_wall_x - world_xy_filter(left_flag, 1);
-            end
-            % 如果x在FOV右边，通过左墙映射
-            right_flag = (world_xy_filter * fov_line_w2 + ones([size(world_xy_filter, 1), 1]) * fov_line_b2) < 0;
-            if size(right_flag, 1) > 0
-                world_xy_filter(right_flag, 1) = 2 * left_wall_x - world_xy_filter(left_flag, 1);
-            end
-            %% 映射后再筛
-            flag1 = (world_xy_filter * fov_line_w1 + ones([size(world_xy_filter, 1), 1]) * fov_line_b1) < 0;
-            flag2 = (world_xy_filter * fov_line_w2 + ones([size(world_xy_filter, 1), 1]) * fov_line_b2) > 0;
-            flag3 = bitand(world_xy_filter(:, 2) < top_wall_y, world_xy_filter(:, 2) > bottom_wall_y);
-            fine_flag = bitor(bitand(flag1, flag3), bitand(flag2, flag3));
-            world_xy_map = world_xy_filter(fine_flag, :);
-            Resel_vel_map = Resel_vel_filter(fine_flag, :);
-        end
-        all_frame_final_data = [all_frame_final_data; [world_xy_map, Resel_vel_map]];
+        all_frame_final_data = [all_frame_final_data; world_xyv_nlos];
         %% 画过滤后的点云图
         nexttile;
-        scatter(world_xy_map(Resel_vel_map==0, 1), world_xy_map(Resel_vel_map==0, 2), 20, 'b', 'filled');
+        scatter(world_xyv_nlos(world_xyv_nlos(:, 3)==0, 1), world_xyv_nlos(world_xyv_nlos(:, 3)==0, 2), 20, 'b', 'filled');
         hold on;
-        scatter(world_xy_map(Resel_vel_map~=0, 1), world_xy_map(Resel_vel_map~=0, 2), 20, 'r', 'filled');
+        scatter(world_xyv_nlos(world_xyv_nlos(:, 3)~=0, 1), world_xyv_nlos(world_xyv_nlos(:, 3)~=0, 2), 20, 'r', 'filled');
         xlabel('x (m)');
         ylabel('y (m)');
         title(strcat('Frame no = ', num2str(cnt), ', Pfa = ', num2str(Pfa)));
