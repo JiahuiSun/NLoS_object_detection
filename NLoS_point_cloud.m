@@ -42,10 +42,11 @@ data_each_frame = samples*loop*Tx;
 Is_Windowed = 1;% 1==> Windowing before doing range and angle fft
 
 data_path = "/home/agent/下载/";
-radar_pos_key = "1-1";
-person_pos_key = "1_1";
-radar_angle = 30;
+radar_pos_key = "1-0";
+person_pos_key = "2_0";
+radar_angle = 45;
 corner_type = 4;
+n_frame = 30;
 
 switch person_pos_key
     case "1_0"
@@ -81,34 +82,26 @@ switch radar_pos_key
         error("wrong radar position")
 end
 
+top_wall_y = 5.32;
+bottom_wall_y = 3.18;
+left_wall_x = -1.8;
+fov_line_k = (bottom_wall_y - radar_pos(2)) / (left_wall_x - radar_pos(1));
+fov_line_z = radar_pos(2) - fov_line_k * radar_pos(1);
 switch corner_type
     case 1
-        % TODO: 这个还是不对吧，你分这么多type的目的是什么？是遍历所有情况吗？可是现在遍历全了吗？L转个角度，L开放型转个角度，你不就还得算。我觉得不能这样归类。
     case 2
-
     case 3
-        top_wall_y = 5.32;
-        bottom_wall_y = 3.18;
-        left_wall_x = -1.8;
         corner_args = struct('top_wall_y', 5.32, 'bottom_wall_y', 3.18, 'left_wall_x', -1.8);
     case 4
         corner_args = struct('top_wall_y', 5.32, 'bottom_wall_y', 3.18, 'left_wall_x', -1.8);
     case 5
-
     case 6
-
     case 7 
-
     case 8
-
     case 9
-
     case 10
-
     case 11
-
     case 12
-    
     otherwise
         error("Such a corner type is not considered.");
 end
@@ -122,8 +115,8 @@ all_frame_original_data = [];
 final_gif = filename + '.gif';
 final_png = filename + ".png";
 bar = waitbar(0, "please wait");
-for cnt = 1:30
-    waitbar(cnt/30, bar, "Running  "+num2str(cnt/30*100, "%.1f")+"%");
+for cnt = 1:n_frame
+    waitbar(cnt/n_frame, bar, "Running  "+num2str(cnt/n_frame*100, "%.1f")+"%");
     data_frame = get_next_frame(fid, params);
     data_chirp = [];
     for cj = 1:Tx*loop
@@ -155,13 +148,14 @@ for cnt = 1:30
     %% CFAR detector on Range-Velocity to detect targets 
     % Output format: [doppler index; range index(start from index 1); cell power]
     Pfa = 1e-7; % probability of false alarm
-    [Resl_indx] = cfar_RV(Dopdata_sum, fft_Rang, num_crop, Pfa);  % 这里就是找bin里面最高的峰，也就意味着这里有物体，但可能有多个，需要通过角度fft
+    [Resl_indx] = cfar_RV(Dopdata_sum, fft_Rang, num_crop, Pfa);  % 这里就是找bin里面最高的峰
     detout = peakGrouping(Resl_indx);
     
     % 画图
     t = tiledlayout('flow');
     % Plot range-Doppler image
     nexttile;
+    hold on;
     [axh] = surf(vel_grid, rng_grid, Dopdata_sum);
     view(0, 90);
     axis([-2 2 0 15]);
@@ -171,9 +165,9 @@ for cnt = 1:30
     ylabel('Range(meters)');
     colorbar;
     title('Range-Doppler heatmap');
-    hold on;
     scatter(vel_grid(detout(1, :)), rng_grid(detout(2, :)), 10, 'r', 'filled');
     hold off;
+
     %% doppler compensation on Rangedata_even using the max-intensity peak on each range bin
     for ri = num_crop+1:fft_Rang-num_crop
         find_idx = find(detout(2, :) == ri);
@@ -209,8 +203,8 @@ for cnt = 1:30
 
     % 画原始点云图
     nexttile;
-    scatter(world_xy(Resel_vel==0, 1), world_xy(Resel_vel==0, 2), 20, 'b', 'filled');
     hold on;
+    scatter(world_xy(Resel_vel==0, 1), world_xy(Resel_vel==0, 2), 20, 'b', 'filled');
     scatter(world_xy(Resel_vel~=0, 1), world_xy(Resel_vel~=0, 2), 20, 'r', 'filled');
     xlabel('x (m)');
     ylabel('y (m)');
@@ -227,43 +221,49 @@ for cnt = 1:30
     %% 过滤并映射
     world_xyv_nlos = NLoS_point_filter_map(world_xyv, radar_pos, corner_type, corner_args);
 
-    % 如果没有剩下的点了，就没必要映射了
+    % 画过滤后的点云图
+    nexttile;
+    hold on;
     if size(world_xyv_nlos, 1) < 1
         fprintf("no point left.\n");
-        % 画一张空白图
-        nexttile;
-        hold on;
-        xlabel('x (m)');
-        ylabel('y (m)');
-        title(strcat('Frame no = ', num2str(cnt), ', Pfa = ', num2str(Pfa)));
-        line([-20, 5], [top_wall_y, top_wall_y]);
-        line([-20, left_wall_x], [bottom_wall_y, bottom_wall_y]);
-        line([left_wall_x, left_wall_x], [bottom_wall_y, 0]);
-        line([radar_pos(1), (top_wall_y - fov_line_z) / fov_line_k], [radar_pos(2), top_wall_y]);
-        plot(ground_truth(1), ground_truth(2), '*g', "MarkerSize", 10);
-        plot(radar_pos(1), radar_pos(2), 'dc', "MarkerSize", 10);
-        axis([-20 5 0 20]);
-        hold off;
     else
         all_frame_final_data = [all_frame_final_data; world_xyv_nlos];
-        %% 画过滤后的点云图
-        nexttile;
         scatter(world_xyv_nlos(world_xyv_nlos(:, 3)==0, 1), world_xyv_nlos(world_xyv_nlos(:, 3)==0, 2), 20, 'b', 'filled');
-        hold on;
         scatter(world_xyv_nlos(world_xyv_nlos(:, 3)~=0, 1), world_xyv_nlos(world_xyv_nlos(:, 3)~=0, 2), 20, 'r', 'filled');
-        xlabel('x (m)');
-        ylabel('y (m)');
-        title(strcat('Frame no = ', num2str(cnt), ', Pfa = ', num2str(Pfa)));
-        line([-20, 5], [top_wall_y, top_wall_y]);
-        line([-20, left_wall_x], [bottom_wall_y, bottom_wall_y]);
-        line([left_wall_x, left_wall_x], [bottom_wall_y, 0]);
-        line([radar_pos(1), (top_wall_y - fov_line_z) / fov_line_k], [radar_pos(2), top_wall_y]);
-        plot(ground_truth(1), ground_truth(2), '*g', "MarkerSize", 10);
-        plot(radar_pos(1), radar_pos(2), 'dc', "MarkerSize", 10);
-        axis([-20 5 0 20]);
-        hold off;
     end
-%     break
+    xlabel('x (m)');
+    ylabel('y (m)');
+    title(strcat('Frame no = ', num2str(cnt), ', Pfa = ', num2str(Pfa)));
+    line([-20, 5], [top_wall_y, top_wall_y]);
+    line([-20, left_wall_x], [bottom_wall_y, bottom_wall_y]);
+    line([left_wall_x, left_wall_x], [bottom_wall_y, 0]);
+    line([radar_pos(1), (top_wall_y - fov_line_z) / fov_line_k], [radar_pos(2), top_wall_y]);
+    plot(ground_truth(1), ground_truth(2), '*g', "MarkerSize", 10);
+    plot(radar_pos(1), radar_pos(2), 'dc', "MarkerSize", 10);
+    axis([-20 5 0 20]);
+    hold off;
+
+    % 叠加多帧点云图
+    nexttile;
+    hold on;
+    if size(all_frame_final_data, 1) > 0
+        static_idx = all_frame_final_data(:, 3)==0;
+        dynamic_idx = all_frame_final_data(:, 3)~=0;
+        scatter(all_frame_final_data(static_idx, 1), all_frame_final_data(static_idx, 2), 20, 'b', 'filled');
+        scatter(all_frame_final_data(dynamic_idx, 1), all_frame_final_data(dynamic_idx, 2), 20, 'r', 'filled');
+    end
+    xlabel('x (m)');
+    ylabel('y (m)');
+    title("Stacked point cloud");
+    line([-20, 5], [top_wall_y, top_wall_y]);
+    line([-20, left_wall_x], [bottom_wall_y, bottom_wall_y]);
+    line([left_wall_x, left_wall_x], [bottom_wall_y, 0]);
+    line([radar_pos(1), (top_wall_y - fov_line_z) / fov_line_k], [radar_pos(2), top_wall_y]);
+    plot(ground_truth(1), ground_truth(2), '*g', "MarkerSize", 10);
+    plot(radar_pos(1), radar_pos(2), 'dc', "MarkerSize", 10);
+    axis([-20 5 0 20]);
+    hold off;
+
     % 保存动图
     [A, map] = rgb2ind(frame2im(getframe(gcf)), 256);
     if cnt == 1
@@ -272,42 +272,7 @@ for cnt = 1:30
         imwrite(A, map, final_gif, 'gif', 'WriteMode', 'append', 'DelayTime', 0.3);
     end
 end
-
-%% 叠加效果
-if size(all_frame_final_data, 1) < 1
-    % 画一张空白图
-    nexttile;
-    hold on;
-    xlabel('x (m)');
-    ylabel('y (m)');
-    title("Stacked point cloud");
-    line([-20, 5], [top_wall_y, top_wall_y]);
-    line([-20, left_wall_x], [bottom_wall_y, bottom_wall_y]);
-    line([left_wall_x, left_wall_x], [bottom_wall_y, 0]);
-    line([radar_pos(1), (top_wall_y - fov_line_z) / fov_line_k], [radar_pos(2), top_wall_y]);
-    plot(ground_truth(1), ground_truth(2), '*g', "MarkerSize", 10);
-    plot(radar_pos(1), radar_pos(2), 'dc', "MarkerSize", 10);
-    axis([-20 5 0 20]);
-    hold off;
-else
-    static_idx = all_frame_final_data(:, 3)==0;
-    dynamic_idx = all_frame_final_data(:, 3)~=0;
-    nexttile;
-    scatter(all_frame_final_data(static_idx, 1), all_frame_final_data(static_idx, 2), 20, 'b', 'filled');
-    hold on;
-    scatter(all_frame_final_data(dynamic_idx, 1), all_frame_final_data(dynamic_idx, 2), 20, 'r', 'filled');
-    xlabel('x (m)');
-    ylabel('y (m)');
-    title("Stacked point cloud");
-    line([-20, 5], [top_wall_y, top_wall_y]);
-    line([-20, left_wall_x], [bottom_wall_y, bottom_wall_y]);
-    line([left_wall_x, left_wall_x], [bottom_wall_y, 0]);
-    line([radar_pos(1), (top_wall_y - fov_line_z) / fov_line_k], [radar_pos(2), top_wall_y]);
-    plot(ground_truth(1), ground_truth(2), '*g', "MarkerSize", 10);
-    plot(radar_pos(1), radar_pos(2), 'dc', "MarkerSize", 10);
-    axis([-20 5 0 20]);
-    hold off;
-end
+% 保存最后一帧图片
 imwrite(frame2im(getframe(gcf)), final_png);
 fprintf(' \nIt took %6.2f s. \n', toc);
 fclose(fid);

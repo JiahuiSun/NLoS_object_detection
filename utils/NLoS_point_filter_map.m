@@ -6,7 +6,7 @@
 %   corner_args: struct, parameters for the corner
 % output: point_cloud_filter
 function point_cloud_filter = NLoS_point_filter_map(point_cloud, radar_pos, corner_type, corner_args)
-    point_cloud_ext = [point_cloud(1:2, :), ones([size(point_cloud, 1), 1])];
+    point_cloud_ext = [point_cloud(:, 1:2), ones([size(point_cloud, 1), 1])];
     switch corner_type
         case 1
             top_wall_y = corner_args.top_wall_y;
