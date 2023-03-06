@@ -42,11 +42,11 @@ data_each_frame = samples*loop*Tx;
 Is_Windowed = 1;% 1==> Windowing before doing range and angle fft
 
 data_path = "/home/agent/下载/";
+corner_type = 4;
+n_frame = 100;
 radar_pos_key = "1-0";
 person_pos_key = "2_0";
 radar_angle = 45;
-corner_type = 4;
-n_frame = 30;
 
 switch person_pos_key
     case "1_0"
@@ -109,6 +109,7 @@ end
 %% 读数据，处理每一帧
 tic;
 filename = "radar" + radar_pos_key + "_person" + person_pos_key + "_" + radar_angle;
+disp(filename);
 fid = fopen(data_path+filename+"_Raw_0.bin", 'r');
 all_frame_final_data = [];
 all_frame_original_data = [];
@@ -196,8 +197,8 @@ for cnt = 1:n_frame
     x_vec = -x_vector'.*Resel_rng;
     y_vec = y_vector'.*Resel_rng;
     z_vec = -z_vector'.*Resel_rng;
-
     point_cloud = [x_vec, y_vec, z_vec, Resel_vel];
+
     %% 将雷达坐标系下的点云转换到世界坐标系下
     point_cloud(:, 1:2) = transform(point_cloud(:, 1:2), radar_pos(1), radar_pos(2), 360-radar_angle);
     all_frame_original_data = [all_frame_original_data; point_cloud];
@@ -224,7 +225,7 @@ for cnt = 1:n_frame
     point_cloud_nlos = NLoS_point_filter_map(point_cloud, radar_pos, corner_type, corner_args);
     all_frame_final_data = [all_frame_final_data; point_cloud_nlos];
 
-    % 画过滤后的点云图
+    %% 画过滤后的点云图
     nexttile;
     hold on;
     if size(point_cloud_nlos, 1) > 0
@@ -273,8 +274,11 @@ for cnt = 1:n_frame
     else
         imwrite(A, map, final_gif, 'gif', 'WriteMode', 'append', 'DelayTime', 0.3);
     end
+
+    % 保存最后一帧图片
+    if cnt == n_frame
+        imwrite(frame2im(getframe(gcf)), final_png);
+        fprintf(' \nIt took %6.2f s. \n', toc);
+        fclose(fid);
+    end
 end
-% 保存最后一帧图片
-imwrite(frame2im(getframe(gcf)), final_png);
-fprintf(' \nIt took %6.2f s. \n', toc);
-fclose(fid);
