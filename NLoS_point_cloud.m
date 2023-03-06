@@ -115,9 +115,8 @@ all_frame_original_data = [];
 output_path = 'output/';
 final_gif = output_path + filename + '.gif';
 final_png = output_path + filename + ".png";
-bar = waitbar(0, "please wait");
 for cnt = 1:n_frame
-    waitbar(cnt/n_frame, bar, "Running  "+num2str(cnt/n_frame*100, "%.1f")+"%");
+    disp("frame: " + cnt);
     data_frame = get_next_frame(fid, params);
     data_chirp = [];
     for cj = 1:Tx*loop
@@ -154,12 +153,13 @@ for cnt = 1:n_frame
     
     % 画图
     t = tiledlayout('flow');
+    title(t, filename, 'Interpreter', 'none');
     % Plot range-Doppler image
     nexttile;
     hold on;
     [axh] = surf(vel_grid, rng_grid, Dopdata_sum);
     view(0, 90);
-    axis([-2 2 0 15]);
+    % axis([-2 2 0 15]);
     grid off;
     shading interp;
     xlabel('Doppler Velocity (m/s)');
@@ -197,16 +197,17 @@ for cnt = 1:n_frame
     y_vec = y_vector'.*Resel_rng;
     z_vec = -z_vector'.*Resel_rng;
 
+    point_cloud = [x_vec, y_vec, z_vec, Resel_vel];
     %% 将雷达坐标系下的点云转换到世界坐标系下
-    world_xy = transform([x_vec, y_vec], radar_pos(1), radar_pos(2), 360-radar_angle);
-    world_xyv = [world_xy, Resel_vel];
-    all_frame_original_data = [all_frame_original_data; world_xyv];
-
+    point_cloud(:, 1:2) = transform(point_cloud(:, 1:2), radar_pos(1), radar_pos(2), 360-radar_angle);
+    all_frame_original_data = [all_frame_original_data; point_cloud];
     % 画原始点云图
     nexttile;
     hold on;
-    scatter(world_xy(Resel_vel==0, 1), world_xy(Resel_vel==0, 2), 20, 'b', 'filled');
-    scatter(world_xy(Resel_vel~=0, 1), world_xy(Resel_vel~=0, 2), 20, 'r', 'filled');
+    static_idx = point_cloud(:, 4) == 0;
+    dynamic_idx = point_cloud(:, 4) ~= 0;
+    scatter(point_cloud(static_idx, 1), point_cloud(static_idx, 2), 20, 'b', 'filled');
+    scatter(point_cloud(dynamic_idx, 1), point_cloud(dynamic_idx, 2), 20, 'r', 'filled');
     xlabel('x (m)');
     ylabel('y (m)');
     title(strcat('Frame no = ', num2str(cnt), ', Pfa = ', num2str(Pfa)));
@@ -216,21 +217,21 @@ for cnt = 1:n_frame
     line([radar_pos(1), (top_wall_y - fov_line_z) / fov_line_k], [radar_pos(2), top_wall_y]);
     plot(ground_truth(1), ground_truth(2), '*g', "MarkerSize", 10);
     plot(radar_pos(1), radar_pos(2), 'dc', "MarkerSize", 10);
-    axis([-20 5 0 20]);
+    % axis([-20 5 0 20]);
     hold off;
 
     %% 过滤并映射
-    world_xyv_nlos = NLoS_point_filter_map(world_xyv, radar_pos, corner_type, corner_args);
+    point_cloud_nlos = NLoS_point_filter_map(point_cloud, radar_pos, corner_type, corner_args);
+    all_frame_final_data = [all_frame_final_data; point_cloud_nlos];
 
     % 画过滤后的点云图
     nexttile;
     hold on;
-    if size(world_xyv_nlos, 1) < 1
-        fprintf("no point left.\n");
-    else
-        all_frame_final_data = [all_frame_final_data; world_xyv_nlos];
-        scatter(world_xyv_nlos(world_xyv_nlos(:, 3)==0, 1), world_xyv_nlos(world_xyv_nlos(:, 3)==0, 2), 20, 'b', 'filled');
-        scatter(world_xyv_nlos(world_xyv_nlos(:, 3)~=0, 1), world_xyv_nlos(world_xyv_nlos(:, 3)~=0, 2), 20, 'r', 'filled');
+    if size(point_cloud_nlos, 1) > 0
+        static_idx = point_cloud_nlos(:, 4) == 0;
+        dynamic_idx = point_cloud_nlos(:, 4) ~= 0;
+        scatter(point_cloud_nlos(static_idx, 1), point_cloud_nlos(static_idx, 2), 20, 'b', 'filled');
+        scatter(point_cloud_nlos(dynamic_idx, 1), point_cloud_nlos(dynamic_idx, 2), 20, 'r', 'filled');
     end
     xlabel('x (m)');
     ylabel('y (m)');
@@ -241,15 +242,15 @@ for cnt = 1:n_frame
     line([radar_pos(1), (top_wall_y - fov_line_z) / fov_line_k], [radar_pos(2), top_wall_y]);
     plot(ground_truth(1), ground_truth(2), '*g', "MarkerSize", 10);
     plot(radar_pos(1), radar_pos(2), 'dc', "MarkerSize", 10);
-    axis([-20 5 0 20]);
+    % axis([-20 5 0 20]);
     hold off;
 
-    % 叠加多帧点云图
+    % 画多帧叠加的点云图
     nexttile;
     hold on;
     if size(all_frame_final_data, 1) > 0
-        static_idx = all_frame_final_data(:, 3)==0;
-        dynamic_idx = all_frame_final_data(:, 3)~=0;
+        static_idx = all_frame_final_data(:, 4)==0;
+        dynamic_idx = all_frame_final_data(:, 4)~=0;
         scatter(all_frame_final_data(static_idx, 1), all_frame_final_data(static_idx, 2), 20, 'b', 'filled');
         scatter(all_frame_final_data(dynamic_idx, 1), all_frame_final_data(dynamic_idx, 2), 20, 'r', 'filled');
     end
@@ -262,7 +263,7 @@ for cnt = 1:n_frame
     line([radar_pos(1), (top_wall_y - fov_line_z) / fov_line_k], [radar_pos(2), top_wall_y]);
     plot(ground_truth(1), ground_truth(2), '*g', "MarkerSize", 10);
     plot(radar_pos(1), radar_pos(2), 'dc', "MarkerSize", 10);
-    axis([-20 5 0 20]);
+    % axis([-20 5 0 20]);
     hold off;
 
     % 保存动图
