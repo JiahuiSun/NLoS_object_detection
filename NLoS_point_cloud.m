@@ -108,12 +108,13 @@ end
 
 %% 读数据，处理每一帧
 tic;
-filename = data_path + "radar" + radar_pos_key + "_person" + person_pos_key + "_" + radar_angle;
-fid = fopen(filename+"_Raw_0.bin", 'r');
+filename = "radar" + radar_pos_key + "_person" + person_pos_key + "_" + radar_angle;
+fid = fopen(data_path+filename+"_Raw_0.bin", 'r');
 all_frame_final_data = [];
 all_frame_original_data = [];
-final_gif = filename + '.gif';
-final_png = filename + ".png";
+output_path = 'output/';
+final_gif = output_path + filename + '.gif';
+final_png = output_path + filename + ".png";
 bar = waitbar(0, "please wait");
 for cnt = 1:n_frame
     waitbar(cnt/n_frame, bar, "Running  "+num2str(cnt/n_frame*100, "%.1f")+"%");
