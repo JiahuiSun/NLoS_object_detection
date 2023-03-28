@@ -11,109 +11,42 @@ addpath(genpath('modules/cluster'));
 
 %% 设置参数
 params = get_params_value_2();
-
-% constant parameters
-c = params.c; % Speed of light in air (m/s)
-fc = params.fc; % Center frequency (Hz)
-lambda = params.lambda;
-Rx = params.Rx;
 Tx = params.Tx;
-
-% configuration parameters
 Fs = params.Fs;
 sweepSlope = params.sweepSlope;
 samples = params.samples;
 loop = params.loop;
-
-Tc = params.Tc; % us 
 fft_Rang = params.fft_Rang;
 fft_Vel = params.fft_Vel;
 fft_Ang = params.fft_Ang;
 num_crop = params.num_crop;
-max_value = params.max_value; % normalization the maximum of data WITH 1843
-
+data_each_frame = samples*loop*Tx;
+Is_Windowed = 1;% 1==> Windowing before doing range and angle fft
+Pfa = 1e-7; % probability of false alarm
 % Creat grid table
 rng_grid = params.rng_grid;
 agl_grid = params.agl_grid;
 vel_grid = params.vel_grid;
 
-% Algorithm parameters
-data_each_frame = samples*loop*Tx;
-Is_Windowed = 1;% 1==> Windowing before doing range and angle fft
-
-data_path = "/home/agent/下载/";
-corner_type = 4;
+% environment related，只需要改这里
+data_dir = "/home/agent/下载/";
+filename = "radar1_0_object2_1_45";
+fid = fopen(data_dir+filename+"_Raw_0.bin", 'r');
 n_frame = 100;
-radar_pos_key = "1-0";
-person_pos_key = "2_0";
-radar_angle = 45;
-
-switch person_pos_key
-    case "1_0"
-        ground_truth = [-3.6, 4.8];
-    case "1_1"
-        ground_truth = [-4.8, 4.8];
-    case "1_2"
-        ground_truth = [-6.0, 4.8];
-    case "2_0"
-        ground_truth = [-3.6, 3.6];
-    case "2_1"
-        ground_truth = [-4.8, 3.6];
-    case "2_2"
-        ground_truth = [-6.0, 3.6];
-    otherwise
-        error("wrong person position")
-end
-
-switch radar_pos_key
-    case "1-0"
-        radar_pos = [-0.6, 2.4];
-    case "1-1"
-        radar_pos = [-0.6, 1.2];
-    case "1-2"
-        radar_pos = [-0.6, 0.0];
-    case "2-0"
-        radar_pos = [0.0, 2.4];
-    case "2-1"
-        radar_pos = [0.0, 1.2];
-    case "2-2"
-        radar_pos = [0.0, 0.0];
-    otherwise
-        error("wrong radar position")
-end
-
+radar_pos = [-0.6, 2.4];
+radar_angle = 360 - 45;  % radar逆时针旋转多少度和世界坐标系重合
+ground_truth = [-4.8, 3.6];
+inner_corner = [-1.8, 3.18];
 top_wall_y = 5.32;
-bottom_wall_y = 3.18;
-left_wall_x = -1.8;
-fov_line_k = (bottom_wall_y - radar_pos(2)) / (left_wall_x - radar_pos(1));
+corner_args = struct('top_wall_y', top_wall_y, 'inner_corner', inner_corner);
+fov_line_k = (inner_corner(2) - radar_pos(2)) / (inner_corner(1) - radar_pos(1));
 fov_line_z = radar_pos(2) - fov_line_k * radar_pos(1);
-switch corner_type
-    case 1
-    case 2
-    case 3
-        corner_args = struct('top_wall_y', 5.32, 'bottom_wall_y', 3.18, 'left_wall_x', -1.8);
-    case 4
-        corner_args = struct('top_wall_y', 5.32, 'bottom_wall_y', 3.18, 'left_wall_x', -1.8);
-    case 5
-    case 6
-    case 7 
-    case 8
-    case 9
-    case 10
-    case 11
-    case 12
-    otherwise
-        error("Such a corner type is not considered.");
-end
 
 %% 读数据，处理每一帧
 tic;
-filename = "radar" + radar_pos_key + "_person" + person_pos_key + "_" + radar_angle;
-disp(filename);
-fid = fopen(data_path+filename+"_Raw_0.bin", 'r');
 all_frame_final_data = [];
 all_frame_original_data = [];
-output_path = 'output/';
+output_path = './';
 final_gif = output_path + filename + '.gif';
 final_png = output_path + filename + ".png";
 for cnt = 1:n_frame
@@ -148,7 +81,6 @@ for cnt = 1:n_frame
     
     %% CFAR detector on Range-Velocity to detect targets 
     % Output format: [doppler index; range index(start from index 1); cell power]
-    Pfa = 1e-7; % probability of false alarm
     [Resl_indx] = cfar_RV(Dopdata_sum, fft_Rang, num_crop, Pfa);  % 这里就是找bin里面最高的峰
     detout = peakGrouping(Resl_indx);
     
@@ -160,7 +92,7 @@ for cnt = 1:n_frame
     hold on;
     [axh] = surf(vel_grid, rng_grid, Dopdata_sum);
     view(0, 90);
-    % axis([-2 2 0 15]);
+    axis([-10 5 0 10]);
     grid off;
     shading interp;
     xlabel('Doppler Velocity (m/s)');
@@ -188,7 +120,7 @@ for cnt = 1:n_frame
     Dopdata_merge = [Dopplerdata_tx1, Dopplerdata_tx3, Dopplerdata_tx2];
     
     %% 估计角度，生成点云图
-    [x_vector, y_vector, z_vector] = music_xyz(Dopdata_merge, params, detout, Tx, Rx, -60, 60, 1, -15, 15, 1, 1);
+    [x_vector, y_vector, z_vector] = music_xyz(Dopdata_merge, params, detout, -60, 60, 1, -15, 15, 1, 1);
     
     % Transform bin index to range/velocity/angle
     Resel_vel = vel_grid(detout(1, :), 1);
@@ -200,7 +132,7 @@ for cnt = 1:n_frame
     point_cloud = [x_vec, y_vec, z_vec, Resel_vel];
 
     %% 将雷达坐标系下的点云转换到世界坐标系下
-    point_cloud(:, 1:2) = transform(point_cloud(:, 1:2), radar_pos(1), radar_pos(2), 360-radar_angle);
+    point_cloud(:, 1:2) = transform(point_cloud(:, 1:2), radar_pos(1), radar_pos(2), radar_angle);
     all_frame_original_data = [all_frame_original_data; point_cloud];
     % 画原始点云图
     nexttile;
@@ -212,17 +144,17 @@ for cnt = 1:n_frame
     xlabel('x (m)');
     ylabel('y (m)');
     title(strcat('Frame no = ', num2str(cnt), ', Pfa = ', num2str(Pfa)));
-    line([-20, 5], [top_wall_y, top_wall_y]);
-    line([-20, left_wall_x], [bottom_wall_y, bottom_wall_y]);
-    line([left_wall_x, left_wall_x], [bottom_wall_y, 0]);
+    line([-10, 5], [top_wall_y, top_wall_y]);
+    line([-10, inner_corner(1)], [inner_corner(2), inner_corner(2)]);
+    line([inner_corner(1), inner_corner(1)], [inner_corner(2), 0]);
     line([radar_pos(1), (top_wall_y - fov_line_z) / fov_line_k], [radar_pos(2), top_wall_y]);
     plot(ground_truth(1), ground_truth(2), '*g', "MarkerSize", 10);
     plot(radar_pos(1), radar_pos(2), 'dc', "MarkerSize", 10);
-    % axis([-20 5 0 20]);
+    axis([-10 5 0 10]);
     hold off;
 
     %% 过滤并映射
-    point_cloud_nlos = NLoS_point_filter_map(point_cloud, radar_pos, corner_type, corner_args);
+    point_cloud_nlos = nlos_sensing(point_cloud, radar_pos, corner_args);
     all_frame_final_data = [all_frame_final_data; point_cloud_nlos];
 
     %% 画过滤后的点云图
@@ -237,13 +169,13 @@ for cnt = 1:n_frame
     xlabel('x (m)');
     ylabel('y (m)');
     title(strcat('Frame no = ', num2str(cnt), ', Pfa = ', num2str(Pfa)));
-    line([-20, 5], [top_wall_y, top_wall_y]);
-    line([-20, left_wall_x], [bottom_wall_y, bottom_wall_y]);
-    line([left_wall_x, left_wall_x], [bottom_wall_y, 0]);
+    line([-10, 5], [top_wall_y, top_wall_y]);
+    line([-10, inner_corner(1)], [inner_corner(2), inner_corner(2)]);
+    line([inner_corner(1), inner_corner(1)], [inner_corner(2), 0]);
     line([radar_pos(1), (top_wall_y - fov_line_z) / fov_line_k], [radar_pos(2), top_wall_y]);
     plot(ground_truth(1), ground_truth(2), '*g', "MarkerSize", 10);
     plot(radar_pos(1), radar_pos(2), 'dc', "MarkerSize", 10);
-    % axis([-20 5 0 20]);
+    axis([-10 5 0 10]);
     hold off;
 
     % 画多帧叠加的点云图
@@ -258,13 +190,13 @@ for cnt = 1:n_frame
     xlabel('x (m)');
     ylabel('y (m)');
     title("Stacked point cloud");
-    line([-20, 5], [top_wall_y, top_wall_y]);
-    line([-20, left_wall_x], [bottom_wall_y, bottom_wall_y]);
-    line([left_wall_x, left_wall_x], [bottom_wall_y, 0]);
+    line([-10, 5], [top_wall_y, top_wall_y]);
+    line([-10, inner_corner(1)], [inner_corner(2), inner_corner(2)]);
+    line([inner_corner(1), inner_corner(1)], [inner_corner(2), 0]);
     line([radar_pos(1), (top_wall_y - fov_line_z) / fov_line_k], [radar_pos(2), top_wall_y]);
     plot(ground_truth(1), ground_truth(2), '*g', "MarkerSize", 10);
     plot(radar_pos(1), radar_pos(2), 'dc', "MarkerSize", 10);
-    % axis([-20 5 0 20]);
+    axis([-10 5 0 10]);
     hold off;
 
     % 保存动图
@@ -282,3 +214,4 @@ for cnt = 1:n_frame
         fclose(fid);
     end
 end
+save('point_cloud.mat', "all_frame_final_data");

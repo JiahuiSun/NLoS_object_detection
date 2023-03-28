@@ -1,4 +1,4 @@
-function [x_vector, y_vector, z_vector] = music_xyz(Xcube,params,detout,num_tx,num_rx,azim_start,azim_end,azim_step,elev_start,elev_end,elev_step,n_target)
+function [x_vector, y_vector, z_vector] = music_xyz(Xcube,params,detout,azim_start,azim_end,azim_step,elev_start,elev_end,elev_step,n_target)
 Nr=size(Xcube,1);   %%%length of Chirp
 Ne=size(Xcube,2);   %%%length of channel: 12=4*3
 Nd=size(Xcube,3);   %%%length of chirp loop
@@ -6,6 +6,8 @@ Nd=size(Xcube,3);   %%%length of chirp loop
 c = params.c; % Speed of light in air (m/s)
 fc = params.fc; % Center frequency (Hz)
 lambda = params.lambda;
+num_rx = params.Rx;
+num_tx = params.Tx;
 
 num_detected_obj=size(detout,2);
 
@@ -16,6 +18,7 @@ end
 
 angles=zeros(2,num_detected_obj); % each col: [azimuth, elevation]
 
+% 遍历所有的角度，生成角度矩阵8x121
 % azimuth: -60~60, step: 1
 azim_num=(azim_end-azim_start)/azim_step+1;
 L = n_target;
@@ -35,6 +38,7 @@ for al=0:1:(elev_num-1)
     end
 end
 
+% 计算c1-c8，对每个物体遍历使得加权求和=0的角度
 azimuth_ant = virtual_ant(1:2 * num_rx, :);
 for i=1:num_detected_obj
     x=azimuth_ant(:,i);

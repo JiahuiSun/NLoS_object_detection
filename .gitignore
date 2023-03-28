@@ -135,3 +135,6 @@ data/
 *.out
 output/
 .vscode/
+*.gif
+*.png
+*.mat
